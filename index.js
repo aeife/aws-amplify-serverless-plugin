@@ -3,10 +3,14 @@
 
 const fs = require('fs');
 const chalk = require('chalk');
+const {
+    name,
+    version
+} = require('./package.json');
 
 class ServerlessAmplifyPlugin {
     constructor(serverless, options) {
-        this.useragent = 'serverless-amplify-plugin/0.0.1';
+        this.useragent = `${name}/${version}`;
         this.serverless = serverless;
         this.options = options;
         this.provider = this.serverless.getProvider('aws');
@@ -70,12 +74,16 @@ class ServerlessAmplifyPlugin {
      */
     async fetchStackResources() {
         let resources = [];
-        let request = { StackName: this.stackName };
+        let request = {
+            StackName: this.stackName
+        };
         let morePages = false;
 
         do {
             let result = await this.fetch('CloudFormation', 'listStackResources', request);
-            result.StackResourceSummaries.forEach(item => { resources.push(item); });
+            result.StackResourceSummaries.forEach(item => {
+                resources.push(item);
+            });
             request.NextToken = result.NextToken;
             morePages = result.nextToken ? true : false;
         } while (morePages);
@@ -91,16 +99,15 @@ class ServerlessAmplifyPlugin {
     async fetchAppsyncResource(resource) {
         this.log('debug', `Processing AWS AppSync API ${resource.LogicalResourceId}`);
         const apiId = resource.PhysicalResourceId.split('/')[1];
-        let result = await this.fetch('AppSync', 'getGraphqlApi', { apiId });
-        let schemaResult = await this.fetch('AppSync', 'getIntrospectionSchema', { apiId, format: 'JSON' });
-        let schema = JSON.parse(schemaResult.schema.toString())
+        let result = await this.fetch('AppSync', 'getGraphqlApi', {
+            apiId
+        });
         return {
             'AppSync': {
                 'ApiUrl': result.graphqlApi.uris.GRAPHQL,
                 'AuthMode': result.graphqlApi.authenticationType,
                 'Region': result.graphqlApi.arn.split(':')[3]
-            },
-            'AppSyncSchema': schema
+            }
         };
     }
 
@@ -127,7 +134,8 @@ class ServerlessAmplifyPlugin {
 
         this.log('debug', `Processing Amazon Cognito App Client ${resource.LogicalResourceId}`);
         let result = await this.fetch('CognitoIdentityServiceProvider', 'describeUserPoolClient', {
-            ClientId: resource.PhysicalResourceId, UserPoolId: this.cognitoUserPool.PoolId
+            ClientId: resource.PhysicalResourceId,
+            UserPoolId: this.cognitoUserPool.PoolId
         });
 
         let config = {};
@@ -169,6 +177,21 @@ class ServerlessAmplifyPlugin {
     }
 
     /**
+     * Process an API Gateway Resource to generate the appropriate configuration
+     *
+     * @param {AWSResource} resource the resource record for the API Gateway
+     */
+    fetchAPIGWResource(resource) {
+        this.log('debug', `Processing API GW ${resource.LogicalResourceId}`);
+        return {
+            'APIGateway': {
+                'URL': resource.PhysicalResourceId,
+                'Region': this.region
+            }
+        }
+    }
+
+    /**
      * Fetches a combined list of all resources and their necessary configurations
      */
     async fetchResourceConfigurations() {
@@ -177,6 +200,9 @@ class ServerlessAmplifyPlugin {
 
         resources.forEach(resource => {
             switch (resource.ResourceType) {
+                case 'AWS::ApiGateway::RestApi':
+                    responses.push(this.fetchAPIGWResource(resource));
+                    break;
                 case 'AWS::AppSync::GraphQLApi':
                     responses.push(this.fetchAppsyncResource(resource));
                     break;
@@ -201,9 +227,15 @@ class ServerlessAmplifyPlugin {
      */
     process() {
         this.fetchResourceConfigurations()
-        .then(responses => { return Object.assign({}, ...responses); })
-        .then(configuration => { this.writeConfigurationFiles(configuration); })
-        .catch(error => { this.log('error', `Cannot load resources: ${error.message}`); });
+            .then(responses => {
+                return Object.assign({}, ...responses);
+            })
+            .then(configuration => {
+                this.writeConfigurationFiles(configuration);
+            })
+            .catch(error => {
+                this.log('error', `Cannot load resources: ${error.message}`);
+            });
     }
 
     /**
@@ -234,19 +266,29 @@ class ServerlessAmplifyPlugin {
 
         let authconfig = this.fetchAppClient(configuration, appClient);
         if (authconfig) {
-            config.CognitoUserPool = { 'Default': authconfig };
+            config.CognitoUserPool = {
+                'Default': authconfig
+            };
         }
 
         if (configuration.hasOwnProperty('CognitoIdentity')) {
-            config.CredentialsProvider = { 'CognitoIdentity': { 'Default': configuration.CognitoIdentity } };
+            config.CredentialsProvider = {
+                'CognitoIdentity': {
+                    'Default': configuration.CognitoIdentity
+                }
+            };
         }
 
         if (configuration.hasOwnProperty('AppSync')) {
-            config.AppSync = { 'Default': configuration.AppSync };
+            config.AppSync = {
+                'Default': configuration.AppSync
+            };
         }
 
         if (configuration.hasOwnProperty('S3TransferUtility')) {
-            config.S3TransferUtility = { 'Default': configuration.S3TransferUtility };
+            config.S3TransferUtility = {
+                'Default': configuration.S3TransferUtility
+            };
         }
 
         return JSON.stringify(config, null, 2);
@@ -263,7 +305,7 @@ class ServerlessAmplifyPlugin {
             '// WARNING: DO NOT EDIT.  This file is automatically generated',
             `// Written by ${this.useragent} on ${new Date().toISOString()}`,
             '',
-            'const awsmobile = {',
+            'const aws-exports = {',
             `    "aws_project_region": "${this.region}",`
         ];
 
@@ -280,7 +322,9 @@ class ServerlessAmplifyPlugin {
         }
 
         if (configuration.hasOwnProperty('CognitoIdentity')) {
-            if (!authconfig) { config.push(`    "aws_cognito_region": "${configuration.CognitoIdentity.Region}",`); }
+            if (!authconfig) {
+                config.push(`    "aws_cognito_region": "${configuration.CognitoIdentity.Region}",`);
+            }
             config.push(`    "aws_cognito_identity_pool_id": "${configuration.CognitoIdentity.PoolId}",`);
         }
 
@@ -294,12 +338,24 @@ class ServerlessAmplifyPlugin {
 
         if (configuration.hasOwnProperty('S3TransferUtility')) {
             config.push(
-                `    "aws_user_files_s3_bucket": "${nativeConfig.S3TransferUtility.Bucket}",`
-                `    "aws_user_files_s3_bucket_region": "${nativeConfig.S3TransferUtility.Region}",`
+                `    "aws_user_files_s3_bucket": "${configuration.S3TransferUtility.Bucket}",`,
+                `    "aws_user_files_s3_bucket_region": "${configuration.S3TransferUtility.Region}",`
             );
         }
 
-        config.push('};', '', 'export default awsmobile;', '');
+        if (configuration.hasOwnProperty('APIGateway')) {
+            config.push(
+                `    "aws_cloud_logic_custom": [`,
+                `      {`,
+                `        "name": "api",`,
+                `        "endpoint": "https://${configuration.APIGateway.URL}.execute-api.${configuration.APIGateway.Region}.amazonaws.com/${this.stage}/",`,
+                `        "region": "${configuration.APIGateway.Region}"`,
+                `      }`,
+                `    ]`
+            )
+        }
+
+        config.push('};', '', 'export default aws-exports;', '');
         return config.join("\n");
     }
 
@@ -334,14 +390,6 @@ class ServerlessAmplifyPlugin {
                     this.log('info', `Writing Javascript configuration to ${fileDetails.filename}`);
                     let jsConfig = this.toJavascriptConfiguration(configuration, fileDetails.appClient);
                     this.writeConfigurationFile(fileDetails.filename, jsConfig);
-                    break;
-                case 'schema.json':
-                    if (configuration.hasOwnProperty('AppSyncSchema')) {
-                        this.log('info', `Writing schema.json file to ${fileDetails.filename}`);
-                        this.writeConfigurationFile(fileDetails.filename, JSON.stringify(configuration.AppSyncSchema, null, 2));
-                    } else {
-                        this.log('error', 'Schema.json was requested, but not available in configuration');
-                    }
                     break;
                 default:
                     this.log('warn', `Skipping entry: ${JSON.stringify(fileDetails)} - missing or unknown type field`);
