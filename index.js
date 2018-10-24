@@ -348,8 +348,8 @@ class ServerlessAmplifyPlugin {
             }]
         }
 
-        let config_body = 'const aws_exports = '.concat(JSON.stringify(config_obj, null, 2));
-        let constructed_config = [config_header, config_body, config_footer].join("\n");
+        let config_body = 'export default const aws_exports '.concat(JSON.stringify(config_obj, null, 2));
+        let constructed_config = [config_header, config_body].join("\n");
 
         return constructed_config;
     }
