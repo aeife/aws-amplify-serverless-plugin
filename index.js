@@ -14,10 +14,20 @@ class ServerlessAmplifyPlugin {
         this.options = options;
         this.provider = this.serverless.getProvider('aws');
         this.hooks = {
-            'after:deploy:deploy': this.process.bind(this)
+            'after:deploy:deploy': this.process.bind(this),
+            'amplify:generate': this.process.bind(this)
         };
         this.stackName = `${this.serverless.service.getServiceName()}-${this.provider.getStage()}`;
         this.config = this.serverless.service.custom.amplify;
+
+        this.commands = {
+            amplify: {
+                usage: "Generate Amplify Files",
+                lifecycleEvents: [
+                    'generate'
+                ]
+            }
+        };
     }
 
     /**
