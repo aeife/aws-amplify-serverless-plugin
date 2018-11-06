@@ -135,7 +135,7 @@ class ServerlessAmplifyPlugin {
             switch (resource.ResourceType) {
                 case 'AWS::Cognito::UserPoolClient':
                     this.log('debug', `Processing ${JSON.stringify(resource)}`);
-                    const cfTemplate =  this.serverless.service.provider.compiledCloudFormationTemplate.Resources[resource.LogicalResourceId];
+                    const cfTemplate =  this.serverless.service.resources.Resources[resource.LogicalResourceId];
                     const userPoolName = cfTemplate.Properties.UserPoolId.Ref;
                     const userPoolResource = resources.filter(r => r.ResourceType === 'AWS::Cognito::UserPool' && r.LogicalResourceId === userPoolName)[0];
                     let result = await this.fetch('CognitoIdentityServiceProvider', 'describeUserPoolClient', {
